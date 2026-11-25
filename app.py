@@ -463,5 +463,7 @@ def estado():
 
 
 if __name__ == "__main__":
-    print("Abrir http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "5000"))
+    print(f"Abrir http://{host}:{port}")
+    app.run(host=host, port=port, debug=False)

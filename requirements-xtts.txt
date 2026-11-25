@@ -1,0 +1,4 @@
+# Opcional: motor XTTS para clonar voz.wav.
+# Requiere Python 3.10-3.14 y descarga un modelo de ~2 GB.
+# No se instala en el despliegue por defecto.
+coqui-tts>=0.24
