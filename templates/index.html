@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF / Word a Voz</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:860px; margin:0 auto; padding:40px 20px; }
+  h1 { margin:0 0 4px; font-size:2rem; }
+  .sub { color:var(--muted); margin-bottom:28px; }
+  .card { background:var(--card); border-radius:16px; padding:24px; margin-bottom:20px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  input[type=file] { display:none; }
+  .drop { border:2px dashed #475569; border-radius:12px; padding:38px; text-align:center; cursor:pointer; transition:.2s; }
+  .drop:hover, .drop.drag { border-color:var(--accent); background:rgba(56,189,248,.07); }
+  .drop strong { color:var(--accent); }
+  label { display:block; font-size:.85rem; color:var(--muted); margin:16px 0 6px; }
+  select, input[type=number] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid #475569; background:#0f172a; color:var(--text); }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:180px; }
+  button { border:0; border-radius:10px; padding:12px 18px; font-size:.95rem; font-weight:600; cursor:pointer; transition:.15s; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .primary { background:var(--accent); color:#06283d; }
+  .primary:hover:not(:disabled) { background:#7dd3fc; }
+  .secondary { background:#334155; color:var(--text); }
+  .secondary:hover:not(:disabled) { background:#475569; }
+  .acciones { display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; }
+  .acciones a { display:inline-flex; align-items:center; text-decoration:none; border-radius:10px; padding:12px 18px; font-size:.95rem; font-weight:600; }
+  .acciones a.secondary { background:#334155; color:var(--text); }
+  .acciones a.secondary:hover { background:#475569; }
+  pre { white-space:pre-wrap; word-wrap:break-word; background:#0f172a; padding:16px; border-radius:10px; max-height:260px; overflow:auto; color:#cbd5e1; font-size:.85rem; }
+  .estado { font-size:.8rem; color:var(--muted); margin-top:6px; }
+  .ok { color:#4ade80; } .warn { color:#fbbf24; }
+  audio { width:100%; margin-top:14px; }
+  #mensaje { margin-top:14px; font-size:.9rem; min-height:1.2em; }
+  .leyendo-label { font-size:.85rem; color:var(--muted); margin-bottom:8px; }
+  .doc-nombre { font-size:1.05rem; font-weight:600; color:var(--accent); margin-bottom:12px; }
+  .texto-leyendo { font-size:1.15rem; line-height:1.9; background:#0f172a; padding:18px; border-radius:10px; max-height:300px; overflow:auto; }
+  .palabra { padding:1px 2px; border-radius:3px; transition:background .12s, color .12s; }
+  .palabra.activa { background:var(--accent); color:#06283d; font-weight:700; }
+  .error { color:#f87171; } .success { color:#4ade80; }
+  .spin { display:inline-block; animation:girar 1s linear infinite; }
+  @keyframes girar { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📄 PDF / Word a Voz</h1>
+  <div class="sub">Carga un PDF o un documento Word, escúchalo o conviértelo a MP3.</div>
+
+  <div class="card">
+    <div class="drop" id="drop">
+      <strong>Haz clic para elegir un PDF o Word</strong><br>
+      o arrastra el archivo aquí
+    </div>
+    <input type="file" id="pdf" accept=".pdf,.docx">
+    <div class="estado" id="estado"></div>
+  </div>
+
+  <div class="card" id="controles" style="display:none">
+    <div class="row">
+      <div>
+        <label>Motor de voz</label>
+        <select id="motor">
+          <option value="edge">Rápido (edge-tts, online)</option>
+          <option value="xtts">Voz de voz.wav (XTTS, local)</option>
+        </select>
+      </div>
+      <div>
+        <label>Voz</label>
+        <select id="voice">
+          {% for v in voces %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Velocidad</label>
+        <select id="rate">
+          <option value="-10%">Más lento (-10%)</option>
+          <option value="-8%" selected>Natural (-8%)</option>
+          <option value="-5%">Relajado (-5%)</option>
+          <option value="+0%">Normal (0%)</option>
+          <option value="+10%">Más rápido (+10%)</option>
+        </select>
+      </div>
+      <div>
+        <label>Tono</label>
+        <select id="pitch">
+          <option value="-10Hz">Más grave (-10 Hz)</option>
+          <option value="+0Hz" selected>Natural (0 Hz)</option>
+          <option value="+10Hz">Más agudo (+10 Hz)</option>
+        </select>
+      </div>
+      <div>
+        <label>Estilo</label>
+        <select id="style">
+          <option value="narration-professional" selected>Narración profesional (más humano)</option>
+          <option value="general">Natural simple</option>
+          <option value="gentle">Amable</option>
+          <option value="cheerful">Alegre</option>
+          <option value="calm">Tranquilo</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Caracteres a leer (vista previa)</label>
+        <input type="number" id="limite" value="1500" min="200" max="6000">
+      </div>
+      <div>
+        <label>Tamaño de fragmento (solo XTTS)</label>
+        <input type="number" id="max_chars" value="220" min="100" max="500">
+      </div>
+    </div>
+
+    <div class="acciones">
+      <button class="secondary" id="btn-leer">▶ Leer muestra</button>
+      <button class="primary" id="btn-mp3">⬇ Convertir a MP3</button>
+      <a class="secondary" id="btn-descargar" href="#" style="display:none">⬇ Descargar MP3</a>
+    </div>
+    <div id="mensaje"></div>
+    <audio id="reproductor" controls style="display:none"></audio>
+  </div>
+
+  <div class="card" id="leyendo-card" style="display:none">
+    <div class="leyendo-label" id="leyendo-label">Leyendo ahora</div>
+    <div class="doc-nombre" id="doc-nombre"></div>
+    <div class="texto-leyendo" id="texto-leyendo"></div>
+  </div>
+
+  <div class="card" id="preview-card" style="display:none">
+    <label>Vista previa del texto extraído</label>
+    <pre id="preview"></pre>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let idActual = null;
+let nombreActual = '';
+let textoCompleto = '';
+let palabras = [];
+
+function recortar(texto, limite) {
+  if (texto.length <= limite) return texto;
+  const corte = texto.slice(0, limite);
+  const indice = corte.lastIndexOf(' ');
+  return texto.slice(0, indice > 0 ? indice : limite) + '...';
+}
+
+function mostrarLeyendo(texto, etiqueta) {
+  $('leyendo-label').textContent = etiqueta;
+  $('doc-nombre').textContent = '📄 ' + nombreActual;
+  $('texto-leyendo').innerHTML = '';
+  palabras = texto.split(/\s+/).filter(Boolean).map(palabra => {
+    const span = document.createElement('span');
+    span.className = 'palabra';
+    span.textContent = palabra + ' ';
+    $('texto-leyendo').appendChild(span);
+    return span;
+  });
+  $('leyendo-card').style.display = 'block';
+}
+
+function resaltar(proporcion) {
+  if (!palabras.length) return;
+  const indice = Math.min(palabras.length - 1, Math.floor(proporcion * palabras.length));
+  palabras.forEach((s, i) => s.classList.toggle('activa', i === indice));
+}
+
+function limpiarResaltado() { palabras.forEach(s => s.classList.remove('activa')); }
+
+fetch('/estado').then(r => r.json()).then(e => {
+  const partes = [];
+  partes.push(`edge-tts: <span class="${e.edge_tts ? 'ok' : 'warn'}">${e.edge_tts ? 'disponible' : 'no instalado'}</span>`);
+  const xttsTxt = e.xtts ? 'disponible'
+    : (e.xtts_modelo ? 'no instalado (pip install coqui-tts)' : 'modelo no descargado');
+  partes.push(`XTTS: <span class="${e.xtts ? 'ok' : 'warn'}">${xttsTxt}</span>`);
+  partes.push(`pypdf: <span class="${e.pypdf ? 'ok' : 'warn'}">${e.pypdf ? 'disponible' : 'no instalado'}</span>`);
+  partes.push(`Word: <span class="${e.python_docx ? 'ok' : 'warn'}">${e.python_docx ? 'disponible' : 'no instalado'}</span>`);
+  $('estado').innerHTML = partes.join(' &nbsp;·&nbsp; ');
+  if (!e.xtts) {
+    const opt = $('motor').querySelector('option[value="xtts"]');
+    opt.disabled = true;
+    opt.textContent = 'Voz de voz.wav (modelo no disponible)';
+  }
+});
+
+$('drop').onclick = () => $('pdf').click();
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('drag'); };
+$('drop').ondragleave = () => $('drop').classList.remove('drag');
+$('drop').ondrop = e => {
+  e.preventDefault(); $('drop').classList.remove('drag');
+  if (e.dataTransfer.files.length) subir(e.dataTransfer.files[0]);
+};
+$('pdf').onchange = e => { if (e.target.files.length) subir(e.target.files[0]); };
+
+function msg(texto, tipo='') { $('mensaje').textContent = texto; $('mensaje').className = tipo; }
+
+async function subir(archivo) {
+  const ext = archivo.name.toLowerCase().split('.').pop();
+  if (ext !== 'pdf' && ext !== 'docx') { msg('Solo se aceptan PDF o Word (.docx)', 'error'); return; }
+  msg(`Extrayendo texto de ${archivo.name}...`);
+  const fd = new FormData(); fd.append('archivo', archivo);
+  try {
+    const r = await fetch('/cargar', { method:'POST', body:fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    idActual = d.id;
+    nombreActual = d.nombre;
+    textoCompleto = d.texto;
+    $('preview').textContent = d.vista_previa;
+    $('preview-card').style.display = 'block';
+    $('controles').style.display = 'block';
+    msg(`Documento cargado: ${d.caracteres} caracteres extraídos`, 'success');
+    $('reproductor').style.display = 'none';
+    $('leyendo-card').style.display = 'none';
+    $('btn-descargar').style.display = 'none';
+  } catch (err) { msg(err.message, 'error'); }
+}
+
+function datosComunes() {
+  return {
+    id: idActual,
+    motor: $('motor').value,
+    voice: $('voice').value,
+    rate: $('rate').value,
+    pitch: $('pitch').value,
+    style: $('style').value
+  };
+}
+
+$('btn-leer').onclick = async () => {
+  if (!idActual) return;
+  const b = $('btn-leer'); b.disabled = true; msg('Generando audio...');
+  try {
+    const d = datosComunes(); d.limite = $('limite').value;
+    const r = await fetch('/leer', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+    const textoLeido = recortar(textoCompleto, Number($('limite').value));
+    mostrarLeyendo(textoLeido, 'Leyendo ahora');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const reproductor = $('reproductor');
+    reproductor.src = url; reproductor.style.display = 'block';
+    reproductor.ontimeupdate = () => {
+      if (reproductor.duration) resaltar(reproductor.currentTime / reproductor.duration);
+    };
+    reproductor.onended = limpiarResaltado;
+    reproductor.onpause = limpiarResaltado;
+    reproductor.play();
+    msg(`Reproduciendo: ${nombreActual}`, 'success');
+  } catch (err) { msg(err.message, 'error'); }
+  finally { b.disabled = false; }
+};
+
+$('btn-mp3').onclick = async () => {
+  if (!idActual) return;
+  const b = $('btn-mp3'); b.disabled = true; b.innerHTML = '<span class="spin">⏳</span> Convirtiendo...';
+  msg('Sintetizando el documento completo. Esto puede tardar unos minutos...');
+  mostrarLeyendo(recortar(textoCompleto, 3000), 'Convirtiendo a MP3');
+  const temporizador = setInterval(async () => {
+    try {
+      const p = await (await fetch('/progreso?id=' + idActual)).json();
+      if (p.estado) msg(`${p.estado} ... ${p.porcentaje || 0}%`);
+    } catch (_) {}
+  }, 1200);
+  try {
+    const d = datosComunes(); d.max_chars = $('max_chars').value;
+    const r = await fetch('/convertir', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+    const nombre = r.headers.get('X-Nombre') || 'audiolibro.mp3';
+    const enlace = $('btn-descargar');
+    enlace.href = '/descargar/' + idActual;
+    enlace.textContent = '⬇ Descargar ' + nombre;
+    enlace.style.display = 'inline-flex';
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    const tiempo = r.headers.get('X-Tiempo');
+    const cache = r.headers.get('X-Cache') === 'hit' ? ' (desde caché)' : '';
+    msg(`MP3 listo: ${nombre} (${tiempo} s${cache})`, 'success');
+    $('leyendo-label').textContent = 'Último documento leído';
+    limpiarResaltado();
+  } catch (err) { msg(err.message, 'error'); }
+  finally { clearInterval(temporizador); b.disabled = false; b.textContent = '⬇ Convertir a MP3'; }
+};
+</script>
+</body>
+</html>
